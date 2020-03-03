@@ -1,9 +1,7 @@
 package com.company;
 
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.SocketAddress;
-import java.net.SocketException;
+import java.net.*;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -13,6 +11,8 @@ public class NetworkServer implements Runnable {
     private final int SLEEP_MS = 100;
     private final int MSG_SIZE = 512;
     private DatagramSocket socket;
+    static List<Observer> myObservers = new ArrayList<>();
+    List<DatagramPacket> clients = new ArrayList<>();
 
     public NetworkServer(){
         try {
@@ -20,8 +20,14 @@ public class NetworkServer implements Runnable {
             socket.setSoTimeout(SLEEP_MS);
         } catch(SocketException e){ System.out.println(e.getMessage()); }
     }
-
-
+    public void notifyObservers(String message){
+        for (Observer observer : myObservers){
+            observer.update(message);
+        }
+    }
+    public void addObserver(Observer o){
+        myObservers.add(o);
+    }
 
     public void sendMsgToClient(String msg, SocketAddress clientSocketAddress) {
         byte[] buffer = msg.getBytes();
@@ -29,7 +35,10 @@ public class NetworkServer implements Runnable {
         DatagramPacket response = new DatagramPacket(buffer, buffer.length, clientSocketAddress);
 
         try { socket.send(response); }
-        catch (Exception e) { e.printStackTrace(); }
+        catch (Exception e) {
+            e.printStackTrace();
+            System.out.println(e.getMessage());
+        }
     }
     @Override
     public void run() {
@@ -40,22 +49,24 @@ public class NetworkServer implements Runnable {
             if (!receiveMsgFromAnyClient(clientRequest)) {
                 continue;
             }
-            else{
-                System.out.println("New message recieved! " + clientRequest);
+            else {
+                String clientMsg = new String(clientRequest.getData(), 0, clientRequest.getLength());
+                clients.add(clientRequest);
+                notifyObservers(clientMsg);
+                System.out.println("In server, message from client is: " + clientMsg);
+                for (DatagramPacket client : clients) {
+                    sendMsgToClient("(Server): Message received", new InetSocketAddress(client.getAddress()
+                            , client.getPort()));
+                }
             }
-            //List<String> queuedMessages = new ArrayList<>();
-            String clientMsg = new String(clientRequest.getData(), 0, clientRequest.getLength());
-
-            // TODO: Save the msg to a queue instead
         }
     }
 
     private boolean receiveMsgFromAnyClient(DatagramPacket clientRequest){
         try { socket.receive(clientRequest);
-            System.out.println("Alex connected!");
-            System.out.println(clientRequest);
         }
         catch (Exception ex) { return false; }
         return true;
     }
+
 }
